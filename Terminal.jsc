@@ -1,0 +1,59 @@
+#!/usr/local/bin/jsish -c %s
+// Terminal interface
+
+code Header = {
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <termios.h>
+#define TermStruct struct termios
+};
+
+struct Terminal = {
+	Jsi_Interp* _interp;
+	TermStruct termios_save;
+	int fdflags;
+};
+
+extension Terminal = { // Extension to read/write to the terminal (*NIX)
+
+    function ~() {
+	fcntl(0, F_SETFL, cmdPtr->fdflags);
+        tcsetattr(0,TCSANOW, &cmdPtr->termios_save);
+    }
+
+    function Terminal(options:object=void):userobj { // Terminal constructor
+	TermStruct termios_p;
+
+	tcgetattr(0, &termios_p);
+	cmdPtr->termios_save = termios_p;
+
+	cmdPtr->fdflags = fcntl(0, F_GETFL);
+	fcntl(0, F_SETFL, cmdPtr->fdflags | O_NONBLOCK);
+
+	termios_p.c_lflag &= ~(ICANON|ECHO);
+	tcsetattr(0,TCSANOW, &termios_p);
+
+	return JSI_OK;
+    }
+
+    function read():string { // Read a byte
+        char buf[2] = { '\0', '\0' };
+        ssize_t r = read(0, &buf, 1);
+
+        Jsi_DString dStr;
+        Jsi_DSInit(&dStr);
+
+        if( 1 == r )
+        {
+            Jsi_DSAppend(&dStr, buf, NULL);
+            Jsi_ValueMakeStringDup(interp, ret, Jsi_DSValue(&dStr));
+        }
+	Jsi_DSFree(&dStr);
+
+        return JSI_OK;
+    }
+};
+
